@@ -1,0 +1,186 @@
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+
+public class InvoiceSystem {
+    static final String DB_URL = "jdbc:mysql://localhost:3306/invoice_system";
+    static final String USER = "root"; 
+    static final String PASS = "jmreals";
+    
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        int choice;
+
+        while (true) {
+            System.out.println("\n=== Virtual Assistant Invoice System ===");
+            System.out.println("1. Client Management");
+            System.out.println("2. Service Management");
+            System.out.println("3. Invoice Management");
+            System.out.println("4. Exit");
+            System.out.print("Enter your choice: ");
+            
+            choice = scanner.nextInt();
+            scanner.nextLine();
+
+            switch (choice) {
+                case 1 -> System.out.println("\n=== Client Management === (Not Implemented)");
+                case 2 -> System.out.println("\n=== Service Management === (Not Implemented)");
+                case 3 -> invoiceManagement(scanner);
+                case 4 -> {
+                    System.out.println("Exiting... Goodbye!");
+                    scanner.close();
+                    return;
+                }
+                default -> System.out.println("Invalid choice. Try again.");
+            }
+        }
+    }
+
+    public static void invoiceManagement(Scanner scanner) {
+        int choice;
+        while (true) {
+            System.out.println("\n=== Invoice Management ===");
+            System.out.println("1. Create New Invoice");
+            System.out.println("2. View All Invoices");
+            System.out.println("3. View Invoice by Client");
+            System.out.println("4. Back");
+            System.out.print("Enter your choice: ");
+            
+            choice = scanner.nextInt();
+            scanner.nextLine();
+
+            switch (choice) {
+                case 1 -> createInvoice(scanner);
+                case 2 -> viewAllInvoices();
+                case 3 -> viewInvoiceByClient(scanner);
+                case 4 -> { return; }
+                default -> System.out.println("Invalid choice. Try again.");
+            }
+        }
+    }
+
+    public static void createInvoice(Scanner scanner) {
+        try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASS)) {
+            List<Integer> clientIds = new ArrayList<>();
+            System.out.println("\nSelect client:");
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT id, name FROM clients")) {
+                int index = 1;
+                while (rs.next()) {
+                    System.out.println(index + ". " + rs.getString("name"));
+                    clientIds.add(rs.getInt("id"));
+                    index++;
+                }
+            }
+            
+            if (clientIds.isEmpty()) {
+                System.out.println("No clients available. Add a client first.");
+                return;
+            }
+            
+            System.out.print("Enter client number: ");
+            int clientIndex = scanner.nextInt() - 1;
+            scanner.nextLine();
+            if (clientIndex < 0 || clientIndex >= clientIds.size()) {
+                System.out.println("Invalid selection.");
+                return;
+            }
+            int clientId = clientIds.get(clientIndex);
+
+            List<Integer> serviceIds = new ArrayList<>();
+            List<Double> serviceRates = new ArrayList<>();
+            System.out.println("\nAvailable services:");
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT id, name, price FROM services")) {
+                int index = 1;
+                while (rs.next()) {
+                    System.out.println(index + ". " + rs.getString("name") + " ($" + rs.getDouble("price") + "/hr)");
+                    serviceIds.add(rs.getInt("id"));
+                    serviceRates.add(rs.getDouble("price"));
+                    index++;
+                }
+            }
+            
+            if (serviceIds.isEmpty()) {
+                System.out.println("No services available. Add a service first.");
+                return;
+            }
+
+            List<Integer> selectedServices = new ArrayList<>();
+            List<Integer> serviceHours = new ArrayList<>();
+            double subtotal = 0;
+            
+            while (true) {
+                System.out.println("\nAdd services to invoice:");
+                System.out.println("1. Add service");
+                System.out.println("2. Finish invoice");
+                System.out.print("Enter choice: ");
+                int serviceChoice = scanner.nextInt();
+                
+                if (serviceChoice == 2) break;
+                if (serviceChoice != 1) {
+                    System.out.println("Invalid option.");
+                    continue;
+                }
+
+                System.out.print("Select service number: ");
+                int serviceIndex = scanner.nextInt() - 1;
+                if (serviceIndex < 0 || serviceIndex >= serviceIds.size()) {
+                    System.out.println("Invalid service selection.");
+                    continue;
+                }
+
+                System.out.print("Enter hours: ");
+                int hours = scanner.nextInt();
+                scanner.nextLine();
+
+                selectedServices.add(serviceIds.get(serviceIndex));
+                serviceHours.add(hours);
+                subtotal += serviceRates.get(serviceIndex) * hours;
+
+                System.out.println("Service added to invoice.");
+            }
+
+            double tax = subtotal * 0.10;
+            double total = subtotal + tax;
+
+            String insertInvoiceSQL = "INSERT INTO invoices (client_id, subtotal, tax, total) VALUES (?, ?, ?, ?)";
+            int invoiceId;
+            try (PreparedStatement stmt = conn.prepareStatement(insertInvoiceSQL, Statement.RETURN_GENERATED_KEYS)) {
+                stmt.setInt(1, clientId);
+                stmt.setDouble(2, subtotal);
+                stmt.setDouble(3, tax);
+                stmt.setDouble(4, total);
+                stmt.executeUpdate();
+
+                ResultSet rs = stmt.getGeneratedKeys();
+                rs.next();
+                invoiceId = rs.getInt(1);
+            }
+
+            String insertItemSQL = "INSERT INTO invoice_services (invoice_id, service_id, hours, total_cost) VALUES (?, ?, ?, ?)";
+            try (PreparedStatement stmt = conn.prepareStatement(insertItemSQL)) {
+                for (int i = 0; i < selectedServices.size(); i++) {
+                    stmt.setInt(1, invoiceId);
+                    stmt.setInt(2, selectedServices.get(i));
+                    stmt.setInt(3, serviceHours.get(i));
+                    stmt.setDouble(4, serviceHours.get(i) * serviceRates.get(i));
+                    stmt.executeUpdate();
+                }
+            }
+
+            System.out.println("\nInvoice created successfully!");
+        } catch (SQLException e) {
+            System.out.println("Database error: " + e.getMessage());
+        }
+    }
+
+    private static void viewAllInvoices() {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    private static void viewInvoiceByClient(Scanner scanner) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+}
